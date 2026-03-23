@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>AI Cat & Dog Classifier | TensorFlow.js</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --cat-color: #ff6b9d;
+            --dog-color: #4ecdc4;
+            --bg-dark: #0f0f1a;
+            --bg-card: #1a1a2e;
+            --bg-card2: #16213e;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --accent: #7c3aed;
+            --accent2: #06b6d4;
+            --border: rgba(255,255,255,0.1);
+            --shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background:
+                radial-gradient(ellipse at 20% 50%, rgba(124,58,237,0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 20%, rgba(6,182,212,0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 50% 80%, rgba(255,107,157,0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        header {
+            text-align: center;
+            padding: 40px 0 30px;
+        }
+
+        .logo {
+            font-size: 4rem;
+            margin-bottom: 10px;
+            animation: float 3s ease-in-out infinite;
+            display: inline-block;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        h1 {
+            font-size: clamp(1.8rem, 5vw, 2.8rem);
+            font-weight: 800;
+            background: linear-gradient(135deg, #7c3aed, #06b6d4, #ff6b9d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+        }
+
+        /* Status bar */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+            padding: 12px 24px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 50px;
+            font-size: 0.9rem;
+            width: fit-content;
+            margin: 20px auto;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #fbbf24;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .status-dot.ready {
+            background: #10b981;
+            animation: none;
+        }
+
+        .status-dot.error {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+        }
+
+        /* Main card */
+        .main-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+
+        /* Upload area */
+        .upload-area {
+            border: 2px dashed rgba(124,58,237,0.5);
+            border-radius: 20px;
+            padding: 50px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(124,58,237,0.05);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(124,58,237,0.1), rgba(6,182,212,0.1));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .upload-area:hover::before,
+        .upload-area.dragover::before {
+            opacity: 1;
+        }
+
+        .upload-area:hover,
+        .upload-area.dragover {
+            border-color: var(--accent);
+            transform: scale(1.01);
+            box-shadow: 0 0 30px rgba(124,58,237,0.2);
+        }
+
+        .upload-icon {
+            font-size: 3.5rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .upload-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .upload-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+
+        .btn-upload {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            background: linear-gradient(135deg, var(--accent), var(--accent2));
+            color: white;
+            border: none;
+            border-radius: 50px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(124,58,237,0.4);
+        }
+
+        .btn-upload:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(124,58,237,0.5);
+        }
+
+        .btn-upload:active {
+            transform: translateY(0);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* Preview section */
+        .preview-section {
+            display: none;
+            margin-top: 25px;
+        }
+
+        .preview-section.visible {
+            display: block;
+            animation: slideUp 0.4s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .preview-container {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            background: var(--bg-card2);
+            max-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #previewImage {
+            max-width: 100%;
+            max-height: 400px;
+            object-fit: contain;
+            display: block;
+            border-radius: 16px;
+        }
+
+        .preview-overlay {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-clear {
+            background: rgba(239,68,68,0.8);
+            color: white;
+        }
+
+        .btn-clear:hover {
+            background: rgba(239,68,68,1);
+            transform: scale(1.1);
+        }
+
+        /* Analyze button */
+        .btn-analyze {
+            width: 100%;
+            padding: 16px;
+            margin-top: 20px;
+            background: linear-gradient(135deg, #7c3aed, #06b6d4);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-analyze:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(124,58,237,0.5);
+        }
+
+        .btn-analyze:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            width: 22px;
+            height: 22px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Results section */
+        .results-section {
+            display: none;
+            margin-top: 25px;
+        }
+
+        .results-section.visible {
+            display: block;
+            animation: slideUp 0.5s ease;
+        }
+
+        .result-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .result-animal {
+            font-size: 5rem;
+            display: block;
+            margin-bottom: 10px;
+            animation: bounceIn 0.6s ease;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0); opacity: 0; }
+            60% { transform: scale(1.2); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .result-label {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 5px;
+        }
+
+        .result-label.cat {
+            color: var(--cat-color);
+        }
+
+        .result-label.dog {
+            color: var(--dog-color);
+        }
+
+        .result-label.unknown {
+            color: var(--text-secondary);
+        }
+
+        .result-confidence-text {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* Confidence bars */
+        .confidence-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .confidence-item {
+            background: var(--bg-card2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            border: 1px solid var(--border);
+        }
+
+        .confidence-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .confidence-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+
+        .confidence-percent {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .confidence-percent.cat { color: var(--cat-color); }
+        .confidence-percent.dog { color: var(--dog-color); }
+
+        .bar-track {
+            height: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            border-radius: 50px;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 0%;
+        }
+
+        .bar-fill.cat {
+            background: linear-gradient(90deg, #ff6b9d, #ff8fab);
+        }
+
+        .bar-fill.dog {
+            background: linear-gradient(90deg, #4ecdc4, #06b6d4);
+        }
+
+        /* Top predictions */
+        .top-predictions {
+            background: var(--bg-card2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            border: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .top-predictions h3 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        .prediction-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .prediction-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        .prediction-name {
+            color: var(--text-secondary);
+            text-transform: capitalize;
+        }
+
+        .prediction-score {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            background: rgba(255,255,255,0.1);
+            padding: 2px 10px;
+            border-radius: 20px;
+        }
+
+        /* Fun facts */
+        .fun-fact {
+            background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.15));
+            border: 1px solid rgba(124,58,237,0.3);
+            border-radius: 12px;
+            padding: 16px 20px;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .fun-fact strong {
+            color: var(--text-primary);
+        }
+
+        /* Try again button */
+        .btn-retry {
+            width: 100%;
+            padding: 14px;
+            margin-top: 20px;
+            background: transparent;
+            color: var(--text-primary);
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-retry:hover {
+            border-color: var(--accent);
+            background: rgba(124,58,237,0.1);
+            transform: translateY(-1px);
+        }
+
+        /* Sample images */
+        .samples-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 25px 30px;
+            margin-bottom: 20px;
+        }
+
+        .samples-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sample-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 12px;
+        }
+
+        .sample-item {
+            border-radius: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            aspect-ratio: 1;
+            background: var(--bg-card2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            position: relative;
+        }
+
+        .sample-item:hover {
+            border-color: var(--accent);
+            transform: scale(1.05);
+            box-shadow: 0 8px 20px rgba(124,58,237,0.3);
+        }
+
+        .sample-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .sample-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.7);
+            text-align: center;
+            font-size: 0.7rem;
+            padding: 4px;
+            color: white;
+        }
+
+        /* Info cards */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .info-card .icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        .info-card .value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--accent2);
+        }
+
+        .info-card .label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 30px 0;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            margin-top: 20px;
+        }
+
+        footer a {
+            color: var(--accent2);
+            text-decoration: none;
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(15,15,26,0.8);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .loading-overlay.visible {
+            display: flex;
+        }
+
+        .loading-spinner-large {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(124,58,237,0.3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+        }
+
+        .loading-progress {
+            width: 200px;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50px;
+            overflow: hidden;
+        }
+
+        .loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            border-radius: 50px;
+            animation: loadingBar 2s ease-in-out infinite;
+        }
+
+        @keyframes loadingBar {
+            0% { width: 0%; margin-left: 0; }
+            50% { width: 70%; margin-left: 0; }
+            100% { width: 0%; margin-left: 100%; }
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 50px;
+            padding: 12px 24px;
+            font-size: 0.9rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+            z-index: 200;
+            white-space: nowrap;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* Responsive */
+        @media (max-width: 600px) {
+            .container { padding: 15px; }
+            .main-card { padding: 20px; }
+            .upload-area { padding: 35px 20px; }
+            .result-animal { font-size: 4rem; }
+            .result-label { font-size: 1.6rem; }
+        }
+
+        /* Camera button */
+        .btn-camera {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.1);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            border-radius: 50px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 12px;
+        }
+
+        .btn-camera:hover {
+            background: rgba(255,255,255,0.15);
+            color: var(--text-primary);
+        }
+
+        /* URL input */
+        .url-section {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .url-input {
+            flex: 1;
+            padding: 10px 16px;
+            background: var(--bg-card2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .url-input:focus {
+            border-color: var(--accent);
+        }
+
+        .url-input::placeholder {
+            color: var(--text-secondary);
+        }
+
+        .btn-url {
+            padding: 10px 18px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .btn-url:hover {
+            background: #6d28d9;
+        }
+    </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner-large"></div>
+    <div class="loading-text" id="loadingText">Loading AI Model...</div>
+    <div class="loading-progress">
+        <div class="loading-progress-bar"></div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="container">
+    <header>
+        <div class="logo">🐾</div>
+        <h1>Cat & Dog AI Classifier</h1>
+        <div class="subtitle">Powered by TensorFlow.js + MobileNet Neural Network</div>
+    </header>
+
+    <div class="status-bar" id="statusBar">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Loading AI model...</span>
+    </div>
+
+    <div class="info-grid">
+        <div class="info-card">
+            <div class="icon">🧠</div>
+            <div class="value">MobileNet</div>
+            <div class="label">Neural Network Model</div>
+        </div>
+        <div class="info-card">
+            <div class="icon">⚡</div>
+            <div class="value">~1000ms</div>
+            <div class="label">Inference Time</div>
+        </div>
+        <div class="info-card">
+            <div class="icon">🔒</div>
+            <div class="value">100%</div>
+            <div class="label">Private - Runs Locally</div>
+        </div>
+        <div class="info-card">
+            <div class="icon">📦</div>
+            <div class="value">~17 MB</div>
+            <div class="label">Model Size</div>
+        </div>
+    </div>
+
+    <div class="main-card">
+        <div class="upload-area" id="uploadArea">
+            <span class="upload-icon">📸</span>
+            <div class="upload-title">Drop your image here</div>
+            <div class="upload-subtitle">Supports JPG, PNG, WebP, GIF • Max 10MB</div>
+            <button class="btn-upload" onclick="document.getElementById('fileInput').click()">📁 Choose Image</button>
+            <button class="btn-camera" onclick="openCamera()">📷 Use Camera</button>
+            <div class="url-section">
+                <input type="text" id="urlInput" class="url-input" placeholder="Or paste image URL...">
+                <button class="btn-url" onclick="loadFromURL()">Load</button>
+            </div>
+            <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelect(event)">
+            <input type="file" id="cameraInput" accept="image/*" capture="environment" onchange="handleFileSelect(event)" style="display:none">
+        </div>
+
+        <div class="preview-section" id="previewSection">
+            <div class="preview-container">
+                <img id="previewImage" alt="Preview" style="max-width:100%">
+                <div class="preview-overlay">
+                    <button class="btn-icon btn-clear" onclick="clearImage()" title="Remove image">✕</button>
+                </div>
+            </div>
+            <button class="btn-analyze" id="analyzeBtn" onclick="analyzeImage()">
+                🔍 Analyze Image
+            </button>
+        </div>
+
+        <div class="results-section" id="resultsSection">
+            <div class="result-header">
+                <span class="result-animal" id="resultAnimal">🐱</span>
+                <div class="result-label" id="resultLabel">Cat</div>
+                <div class="result-confidence-text" id="resultConfidenceText">Confidence: 95.3%</div>
+            </div>
+
+            <div class="confidence-bars">
+                <div class="confidence-item">
+                    <div class="confidence-label">
+                        <span class="confidence-name">🐱 Cat</span>
+                        <span class="confidence-percent cat" id="catPercent">0%</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill cat" id="catBar"></div>
+                    </div>
+                </div>
+                <div class="confidence-item">
+                    <div class="confidence-label">
+                        <span class="confidence-name">🐶 Dog</span>
+                        <span class="confidence-percent dog" id="dogPercent">0%</span>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill dog" id="dogBar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="top-predictions">
+                <h3>🔬 Top Raw Predictions</h3>
+                <div class="prediction-list" id="predictionList"></div>
+            </div>
+
+            <div class="fun-fact" id="funFact">
+                <strong>Did you know?</strong><br> Cats sleep 12-16 hours per day.
+            </div>
+
+            <button class="btn-retry" onclick="resetApp()">
+                🔄 Classify Another Image
+            </button>
+        </div>
+    </div>
+
+    <div class="samples-section">
+        <div class="samples-title">
+            🖼️ Try Sample Images (click to test)
+        </div>
+        <div class="sample-grid" id="sampleGrid"></div>
+    </div>
+
+    <footer>
+        🧠 Powered by <a href="https://www.tensorflow.org/js" target="_blank">TensorFlow.js</a> + MobileNet v2<br>
+        Runs 100% in your browser • No server • No data sent anywhere
+    </footer>
+</div>
+
+<script>
+    // ============================================================
+    // CONFIGURATION
+    // ============================================================
+    const CONFIG = {
+        // MobileNet ImageNet class indices for cats and dogs
+        CAT_CLASSES: [
+            'tabby', 'tiger cat', 'persian cat', 'siamese cat', 'egyptian cat',
+            'cougar', 'lynx', 'leopard', 'snow leopard', 'jaguar', 'lion', 'tiger',
+            'cheetah', 'cat', 'kitten', 'domestic cat', 'wildcat'
+        ],
+        DOG_CLASSES: [
+            'chihuahua', 'japanese spaniel', 'maltese dog', 'pekinese', 'shih-tzu',
+            'blenheim spaniel', 'papillon', 'toy terrier', 'rhodesian ridgeback',
+            'afghan hound', 'basset', 'beagle', 'bloodhound', 'bluetick',
+            'black-and-tan coonhound', 'walker hound', 'english foxhound',
+            'redbone', 'borzoi', 'irish wolfhound', 'italian greyhound', 'whippet',
+            'ibizan hound', 'norwegian elkhound', 'otterhound', 'saluki',
+            'scottish deerhound', 'weimaraner', 'staffordshire bullterrier',
+            'american staffordshire terrier', 'bedlington terrier', 'border terrier',
+            'kerry blue terrier', 'irish terrier', 'norfolk terrier', 'norwich terrier',
+            'yorkshire terrier', 'wire-haired fox terrier', 'lakeland terrier',
+            'sealyham terrier', 'airedale', 'cairn', 'australian terrier',
+            'dandie dinmont', 'boston bull', 'miniature schnauzer', 'giant schnauzer',
+            'standard schnauzer', 'scotch terrier', 'tibetan terrier',
+            'silky terrier', 'soft-coated wheaten terrier', 'west highland white terrier',
+            'lhasa', 'flat-coated retriever', 'curly-coated retriever', 'golden retriever',
+            'labrador retriever', 'chesapeake bay retriever', 'german short-haired pointer',
+            'vizsla', 'english setter', 'irish setter', 'gordon setter', 'brittany spaniel',
+            'clumber', 'english springer', 'welsh springer spaniel', 'cocker spaniel',
+            'sussex spaniel', 'irish water spaniel', 'kuvasz', 'schipperke',
+            'groenendael', 'malinois', 'briard', 'kelpie', 'komondor',
+            'old english sheepdog', 'shetland sheepdog', 'collie', 'border collie',
+            'bouvier des flandres', 'rottweiler', 'german shepherd', 'doberman',
+            'miniature pinscher', 'greater swiss mountain dog', 'bernese mountain dog',
+            'appenzeller', 'entlebucher', 'boxer', 'bull mastiff', 'tibetan mastiff',
+            'french bulldog', 'great dane', 'saint bernard', 'eskimo dog', 'malamute',
+            'siberian husky', 'dalmatian', 'affenpinscher', 'basenji', 'pug',
+            'leonberg', 'newfoundland', 'great pyrenees', 'samoyed', 'pomeranian',
+            'chow', 'keeshond', 'brabancon griffon', 'pembroke', 'cardigan',
+            'toy poodle', 'miniature poodle', 'standard poodle', 'mexican hairless',
+            'dingo', 'dhole', 'african hunting dog', 'dog', 'puppy', 'husky',
+            'poodle', 'bulldog', 'terrier', 'spaniel', 'retriever', 'shepherd'
+        ],
+        FUN_FACTS: {
+            cat: [
+                "🐱 Cats sleep 12-16 hours per day — that's 70% of their lives!",
+                "🐱 A cat's purr vibrates at 25-150 Hz, which can promote healing!",
+                "🐱 Cats have 32 muscles in each ear and can rotate them 180°!",
+                "🐱 A group of cats is called a 'clowder'!",
+                "🐱 Cats can jump up to 6 times their body length in one leap!",
+                "🐱 The first cat in space was Félicette, a French cat, in 1963!",
+                "🐱 Cats have a unique nose print, just like human fingerprints!"
+            ],
+            dog: [
+                "🐶 Dogs have 300 million olfactory receptors — humans have only 6 million!",
+                "🐶 A dog's nose print is unique, like a human fingerprint!",
+                "🐶 Dogs can understand up to 250 words and gestures!",
+                "🐶 The Basenji is the only dog that doesn't bark — it yodels!",
+                "🐶 Dogs dream just like humans do during REM sleep!",
+                "🐶 A dog's sense of smell is 40x better than a human's!",
+                "🐶 Greyhounds can run up to 45 mph — faster than a horse over short distances!"
+            ]
+        }
+    };
+
+    // ============================================================
+    // STATE
+    // ============================================================
+    let model = null;
+    let currentImageElement = null;
+    let isModelLoaded = false;
+
+    // ============================================================
+    // SAMPLE IMAGES (using generated canvas with emoji)
+    // ============================================================
+    const SAMPLE_IMAGES = [
+        { emoji: '🐱', label: 'Persian Cat', type: 'cat_persian' },
+        { emoji: '😺', label: 'Tabby Cat', type: 'cat_tabby' },
+        { emoji: '🐈', label: 'Siamese Cat', type: 'cat_siamese' },
+        { emoji: '🐶', label: 'Golden Retriever', type: 'dog_golden' },
+        { emoji: '🐕', label: 'German Shepherd', type: 'dog_shepherd' },
+        { emoji: '🦮', label: 'Labrador', type: 'dog_lab' },
+    ];
+
+    // ============================================================
+    // INITIALIZE
+    // ============================================================
+    window.addEventListener('load', async () => {
+        setupSampleImages();
+        setupDragAndDrop();
+        await loadModel();
+    });
+
+    async function loadModel() {
+        showLoadingOverlay('Loading AI Model (MobileNet)...');
+        updateStatus('loading', 'Loading AI model...');
+
+        try {
+            // Load MobileNet v2 from TensorFlow Hub
+            model = await mobilenet.load({
+                version: 2,
+                alpha: 1.0
+            });
+
+            isModelLoaded = true;
+            updateStatus('ready', 'AI Model Ready ✓');
+            hideLoadingOverlay();
+            showToast('✅ AI Model loaded successfully!');
+            console.log('✅ MobileNet model loaded successfully');
+
+        } catch (error) {
+            console.error('❌ Model loading failed:', error);
+            updateStatus('error', 'Model failed to load — retrying...');
+            hideLoadingOverlay();
+            showToast('⚠️ Retrying model load...');
+
+            // Retry once
+            setTimeout(async () => {
+                try {
+                    model = await mobilenet.load({ version: 1, alpha: 1.0 });
+                    isModelLoaded = true;
+                    updateStatus('ready', 'AI Model Ready ✓');
+                    showToast('✅ Model loaded (v1 fallback)!');
+                } catch (e) {
+                    updateStatus('error', 'Model load failed. Check connection.');
+                    showToast('❌ Could not load model. Check your internet.');
+                }
+            }, 3000);
+        }
+    }
+
+    // ============================================================
+    // UI HELPERS
+    // ============================================================
+    function updateStatus(state, text) {
+        const dot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        dot.className = 'status-dot ' + (state === 'ready' ? 'ready' : state === 'error' ? 'error' : '');
+        statusText.textContent = text;
+    }
+
+    function showLoadingOverlay(text) {
+        document.getElementById('loadingText').textContent = text;
+        document.getElementById('loadingOverlay').classList.add('visible');
+    }
+
+    function hideLoadingOverlay() {
+        document.getElementById('loadingOverlay').classList.remove('visible');
+    }
+
+    function showToast(message, duration = 3000) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), duration);
+    }
+
+    // ============================================================
+    // DRAG AND DROP
+    // ============================================================
+    function setupDragAndDrop() {
+        const uploadArea = document.getElementById('uploadArea');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                loadImageFile(file);
+            } else {
+                showToast('⚠️ Please drop an image file!');
+            }
+        });
+
+        // Click on upload area
+        uploadArea.addEventListener('click', (e) => {
+            if (e.target === uploadArea || e.target.classList.contains('upload-icon') ||
+                e.target.classList.contains('upload-title') || e.target.classList.contains('upload-subtitle')) {
+                document.getElementById('fileInput').click();
+            }
+        });
+    }
+
+    // ============================================================
+    // FILE HANDLING
+    // ============================================================
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) loadImageFile(file);
+    }
+
+    function loadImageFile(file) {
+        if (file.size > 10 * 1024 * 1024) {
+            showToast('⚠️ File too large! Max 10MB.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            loadImageFromSrc(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function loadImageFromSrc(src) {
+        const img = document.getElementById('previewImage');
+        img.onload = () => {
+            currentImageElement = img;
+            document.getElementById('previewSection').classList.add('visible');
+            document.getElementById('resultsSection').classList.remove('visible');
+            document.getElementById('uploadArea').style.display = 'none';
+            showToast('✅ Image loaded! Click Analyze.');
+        };
+        img.onerror = () => {
+            showToast('❌ Failed to load image.');
+        };
+        img.src = src;
+        img.crossOrigin = 'anonymous';
+    }
+
+    function loadFromURL() {
+        const url = document.getElementById('urlInput').value.trim();
+        if (!url) {
+            showToast('⚠️ Please enter an image URL!');
+            return;
+        }
+        if (!url.match(/^https?:\/\/.+/)) {
+            showToast('⚠️ Please enter a valid URL starting with http:// or https://');
+            return;
+        }
+        loadImageFromSrc(url);
+    }
+
+    function openCamera() {
+        document.getElementById('cameraInput').click();
+    }
+
+    function clearImage() {
+        document.getElementById('previewImage').src = '';
+        document.getElementById('previewSection').classList.remove('visible');
+        document.getElementById('resultsSection').classList.remove('visible');
+        document.getElementById('uploadArea').style.display = 'block';
+        document.getElementById('fileInput').value = '';
+        document.getElementById('urlInput').value = '';
+        currentImageElement = null;
+    }
+
+    // ============================================================
+    // SAMPLE IMAGES
+    // ============================================================
+    function setupSampleImages() {
+        const grid = document.getElementById('sampleGrid');
+
+        SAMPLE_IMAGES.forEach(sample => {
+            const item = document.createElement('div');
+            item.className = 'sample-item';
+            item.innerHTML = `
+                <span style="font-size:3rem;">${sample.emoji}</span>
+                <div class="sample-label">${sample.label}</div>
+            `;
+            item.onclick = () => loadSampleImage(sample);
+            grid.appendChild(item);
+        });
+    }
+
+    function loadSampleImage(sample) {
+        // Create a canvas with the emoji rendered on it
+        const canvas = document.createElement('canvas');
+        canvas.width = 224;
+        canvas.height = 224;
+        const ctx = canvas.getContext('2d');
+
+        // Background
+        const iscat = sample.type.startsWith('cat');
+        const gradient = ctx.createRadialGradient(112, 112, 0, 112, 112, 160);
+        if (iscat) {
+            gradient.addColorStop(0, '#ff6b9d33');
+            gradient.addColorStop(1, '#1a1a2e');
+        } else {
+            gradient.addColorStop(0, '#4ecdc433');
+            gradient.addColorStop(1, '#1a1a2e');
+        }
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 224, 224);
+
+        // Draw emoji
+        ctx.font = '120px serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(sample.emoji, 112, 100);
+
+        // Draw label
+        ctx.font = 'bold 18px sans-serif';
+        ctx.fillStyle = 'white';
+        ctx.fillText(sample.label, 112, 190);
+
+        const dataURL = canvas.toDataURL('image/png');
+        loadImageFromSrc(dataURL);
+        showToast(`📸 Sample loaded: ${sample.label}`);
+    }
+
+    // ============================================================
+    // AI ANALYSIS - CORE FUNCTION
+    // ============================================================
+    async function analyzeImage() {
+        if (!isModelLoaded || !model) {
+            showToast('⚠️ Model not loaded yet. Please wait...');
+            return;
+        }
+
+        if (!currentImageElement) {
+            showToast('⚠️ No image to analyze!');
+            return;
+        }
+
+        const btn = document.getElementById('analyzeBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Analyzing...';
+
+        try {
+            // Run inference
+            const startTime = performance.now();
+            const predictions = await model.classify(currentImageElement, 10);
+            const endTime = performance.now();
+            const inferenceTime = Math.round(endTime - startTime);
+
+            console.log('Raw predictions:', predictions);
+            console.log(`Inference time: ${inferenceTime}ms`);
+
+            // Process results
+            const result = processPredictions(predictions);
+            result.inferenceTime = inferenceTime;
+
+            // Display results
+            displayResults(result, predictions);
+
+            showToast(`✅ Analysis complete in ${inferenceTime}ms!`);
+
+        } catch (error) {
+            console.error('Analysis error:', error);
+            showToast('❌ Analysis failed. Try another image.');
+
+            // Show error result
+            displayErrorResult();
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = '🔍 Analyze Image';
+    }
+
+    // ============================================================
+    // PREDICTION PROCESSING
+    // ============================================================
+    function processPredictions(predictions) {
+        let catScore = 0;
+        let dogScore = 0;
+        let catMatches = [];
+        let dogMatches = [];
+
+        predictions.forEach(pred => {
+            const className = pred.className.toLowerCase();
+            const prob = pred.probability;
+
+            // Check if it's a cat
+            const isCat = CONFIG.CAT_CLASSES.some(c => className.includes(c.toLowerCase()));
+            // Check if it's a dog
+            const isDog = CONFIG.DOG_CLASSES.some(d => className.includes(d.toLowerCase()));
+
+            if (isCat) {
+                catScore += prob;
+                catMatches.push({ name: pred.className, score: prob });
+            } else if (isDog) {
+                dogScore += prob;
+                dogMatches.push({ name: pred.className, score: prob });
+            }
+        });
+
+        // Normalize scores
+        const total = catScore + dogScore;
+        let catConfidence, dogConfidence;
+
+        if (total === 0) {
+            // Neither cat nor dog detected clearly
+            catConfidence = 0.5;
+            dogConfidence = 0.5;
+        } else {
+            catConfidence = catScore / total;
+            dogConfidence = dogScore / total;
+        }
+
+        // Determine winner
+        let winner, confidence;
+        if (total < 0.05) {
+            // Very low confidence for both
+            winner = 'unknown';
+            confidence = 0;
+        } else if (catScore > dogScore) {
+            winner = 'cat';
+            confidence = catConfidence;
+        } else {
+            winner = 'dog';
+            confidence = dogConfidence;
+        }
+
+        return {
+            winner,
+            confidence,
+            catScore: catScore,
+            dogScore: dogScore,
+            catConfidence,
+            dogConfidence,
+            catMatches,
+            dogMatches,
+            rawTotal: total
+        };
+    }
+
+    // ============================================================
+    // DISPLAY RESULTS
+    // ============================================================
+    function displayResults(result, rawPredictions) {
+        const resultsSection = document.getElementById('resultsSection');
+
+        // Animal emoji and label
+        const animalEl = document.getElementById('resultAnimal');
+        const labelEl = document.getElementById('resultLabel');
+        const confidenceTextEl = document.getElementById('resultConfidenceText');
+
+        if (result.winner === 'cat') {
+            animalEl.textContent = '🐱';
+            labelEl.textContent = 'It\'s a Cat!';
+            labelEl.className = 'result-label cat';
+            confidenceTextEl.textContent = `Confidence: ${(result.catConfidence * 100).toFixed(1)}%`;
+        } else if (result.winner === 'dog') {
+            animalEl.textContent = '🐶';
+            labelEl.textContent = 'It\'s a Dog!';
+            labelEl.className = 'result-label dog';
+            confidenceTextEl.textContent = `Confidence: ${(result.dogConfidence * 100).toFixed(1)}%`;
+        } else {
+            animalEl.textContent = '🤔';
+            labelEl.textContent = 'Not Sure...';
+            labelEl.className = 'result-label unknown';
+            confidenceTextEl.textContent = 'Could not confidently identify a cat or dog';
+        }
+
+        // Confidence bars
+        const catPct = result.rawTotal > 0 ? (result.catConfidence * 100).toFixed(1) : '50.0';
+        const dogPct = result.rawTotal > 0 ? (result.dogConfidence * 100).toFixed(1) : '50.0';
+
+        document.getElementById('catPercent').textContent = catPct + '%';
+        document.getElementById('dogPercent').textContent = dogPct + '%';
+
+        // Animate bars after a small delay
+        setTimeout(() => {
+            document.getElementById('catBar').style.width = catPct + '%';
+            document.getElementById('dogBar').style.width = dogPct + '%';
+        }, 100);
+
+        // Top raw predictions
+        const predList = document.getElementById('predictionList');
+        predList.innerHTML = '';
+        rawPredictions.slice(0, 5).forEach(pred => {
+            const item = document.createElement('div');
+            item.className = 'prediction-item';
+            item.innerHTML = `
+                <span class="prediction-name">${pred.className}</span>
+                <span class="prediction-score">${(pred.probability * 100).toFixed(2)}%</span>
+            `;
+            predList.appendChild(item);
+        });
+
+        // Fun fact
+        const facts = result.winner === 'cat' ? CONFIG.FUN_FACTS.cat :
+                      result.winner === 'dog' ? CONFIG.FUN_FACTS.dog :
+                      [...CONFIG.FUN_FACTS.cat, ...CONFIG.FUN_FACTS.dog];
+        const randomFact = facts[Math.floor(Math.random() * facts.length)];
+        document.getElementById('funFact').innerHTML = `<strong>Did you know?</strong><br>${randomFact}`;
+
+        // Show results
+        resultsSection.classList.add('visible');
+        resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function displayErrorResult() {
+        document.getElementById('resultAnimal').textContent = '❌';
+        document.getElementById('resultLabel').textContent = 'Analysis Failed';
+        document.getElementById('resultLabel').className = 'result-label unknown';
+        document.getElementById('resultConfidenceText').textContent = 'Please try a different image';
+        document.getElementById('resultsSection').classList.add('visible');
+    }
+
+    // ============================================================
+    // RESET
+    // ============================================================
+    function resetApp() {
+        clearImage();
+        document.getElementById('resultsSection').classList.remove('visible');
+
+        // Reset bars
+        document.getElementById('catBar').style.width = '0%';
+        document.getElementById('dogBar').style.width = '0%';
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ============================================================
+    // PASTE IMAGE SUPPORT
+    // ============================================================
+    document.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of items) {
+            if (item.type.startsWith('image/')) {
+                const file = item.getAsFile();
+                loadImageFile(file);
+                showToast('📋 Image pasted from clipboard!');
+                break;
+            }
+        }
+    });
+
+    // ============================================================
+    // URL INPUT - Enter key support
+    // ============================================================
+    document.getElementById('urlInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') loadFromURL();
+    });
+
+    // ============================================================
+    // KEYBOARD SHORTCUTS
+    // ============================================================
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && currentImageElement && !document.getElementById('analyzeBtn').disabled) {
+            analyzeImage();
+        }
+        if (e.key === 'Escape') {
+            resetApp();
+        }
+    });
+
+    console.log('🐾 Cat & Dog AI Classifier initialized');
+    console.log('📌 Keyboard shortcuts: Enter = Analyze, Escape = Reset');
+    console.log('📌 You can also paste images with Ctrl+V / Cmd+V');
+</script>
+</body>
+</html>
